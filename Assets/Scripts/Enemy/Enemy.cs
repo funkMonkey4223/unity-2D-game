@@ -2,6 +2,7 @@ using UnityEngine;
 
 /// <summary>
 /// Base enemy controller with movement and behavior
+/// Compatible with IHealth interface system
 /// </summary>
 public class Enemy : MonoBehaviour
 {
@@ -20,13 +21,11 @@ public class Enemy : MonoBehaviour
     [SerializeField] private string moveAnimationName = "Move";
     [SerializeField] private string attackAnimationName = "Attack";
 
-    [Header("Player Health Component")]
-    [SerializeField] private string playerHealthComponentName = "PlayerHealth"; // Can be customized
-
     private EnemyHealth enemyHealth;
     private Animator animator;
     private SpriteRenderer spriteRenderer;
     private Rigidbody2D rb;
+    private IHealth playerHealth;
     private Vector2 moveDirection = Vector2.zero;
     private bool isMoving = false;
 
@@ -49,7 +48,12 @@ public class Enemy : MonoBehaviour
             if (player != null)
             {
                 playerTransform = player.transform;
+                CachePlayerHealth();
             }
+        }
+        else
+        {
+            CachePlayerHealth();
         }
     }
 
@@ -128,7 +132,7 @@ public class Enemy : MonoBehaviour
     }
 
     /// <summary>
-    /// Attack the player - supports multiple health system types
+    /// Attack the player using IHealth interface
     /// </summary>
     private void TryAttack()
     {
@@ -137,45 +141,31 @@ public class Enemy : MonoBehaviour
         lastAttackTime = Time.time;
         PlayAnimation(attackAnimationName);
 
-        // Deal damage to player
-        if (playerTransform != null)
+        // Deal damage to player if IHealth interface is available
+        if (playerHealth != null && !playerHealth.IsDead)
         {
-            // Try to get PlayerHealth component by name
-            Component playerHealthComponent = playerTransform.GetComponent(playerHealthComponentName);
-            
-            if (playerHealthComponent != null)
+            DamageInfo damageInfo = new DamageInfo
             {
-                // Use reflection to call TakeDamage method
-                System.Reflection.MethodInfo method = playerHealthComponent.GetType().GetMethod("TakeDamage", 
-                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.IgnoreCase);
-                
-                if (method != null)
-                {
-                    method.Invoke(playerHealthComponent, new object[] { attackDamage });
-                }
-                else
-                {
-                    Debug.LogWarning($"PlayerHealth component on {playerTransform.name} does not have a TakeDamage method");
-                }
-            }
-            else
-            {
-                // Fallback: try to find any component with TakeDamage method
-                Component[] allComponents = playerTransform.GetComponents<Component>();
-                foreach (Component comp in allComponents)
-                {
-                    System.Reflection.MethodInfo method = comp.GetType().GetMethod("TakeDamage", 
-                        System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.IgnoreCase);
-                    
-                    if (method != null)
-                    {
-                        method.Invoke(comp, new object[] { attackDamage });
-                        return;
-                    }
-                }
-                
-                Debug.LogWarning($"No TakeDamage method found on player {playerTransform.name}");
-            }
+                Amount = attackDamage,
+                Type = DamageType.Physical,
+                BypassArmor = false
+            };
+
+            playerHealth.TakeDamage(damageInfo);
+        }
+    }
+
+    /// <summary>
+    /// Cache player's IHealth interface for efficient damage dealing
+    /// </summary>
+    private void CachePlayerHealth()
+    {
+        if (playerTransform == null) return;
+
+        playerHealth = playerTransform.GetComponent<IHealth>();
+        if (playerHealth == null)
+        {
+            Debug.LogWarning($"Player '{playerTransform.name}' does not have a component implementing IHealth interface. Enemy damage will not work.");
         }
     }
 
@@ -231,7 +221,12 @@ public class Enemy : MonoBehaviour
     public void SetMoveSpeed(float newSpeed) => moveSpeed = newSpeed;
     public void SetDetectionRange(float newRange) => detectionRange = newRange;
     public void SetAttackDamage(float newDamage) => attackDamage = newDamage;
-    public void SetPlayerTransform(Transform player) => playerTransform = player;
-    public void SetPlayerHealthComponentName(string componentName) => playerHealthComponentName = componentName;
+    
+    public void SetPlayerTransform(Transform player)
+    {
+        playerTransform = player;
+        CachePlayerHealth();
+    }
+
     public EnemyHealth GetHealth() => enemyHealth;
 }
