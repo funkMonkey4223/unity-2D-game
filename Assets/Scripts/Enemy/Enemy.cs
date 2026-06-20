@@ -20,6 +20,9 @@ public class Enemy : MonoBehaviour
     [SerializeField] private string moveAnimationName = "Move";
     [SerializeField] private string attackAnimationName = "Attack";
 
+    [Header("Player Health Component")]
+    [SerializeField] private string playerHealthComponentName = "PlayerHealth"; // Can be customized
+
     private EnemyHealth enemyHealth;
     private Animator animator;
     private SpriteRenderer spriteRenderer;
@@ -125,7 +128,7 @@ public class Enemy : MonoBehaviour
     }
 
     /// <summary>
-    /// Attack the player
+    /// Attack the player - supports multiple health system types
     /// </summary>
     private void TryAttack()
     {
@@ -137,10 +140,41 @@ public class Enemy : MonoBehaviour
         // Deal damage to player
         if (playerTransform != null)
         {
-            PlayerHealth playerHealth = playerTransform.GetComponent<PlayerHealth>();
-            if (playerHealth != null)
+            // Try to get PlayerHealth component by name
+            Component playerHealthComponent = playerTransform.GetComponent(playerHealthComponentName);
+            
+            if (playerHealthComponent != null)
             {
-                playerHealth.TakeDamage(attackDamage);
+                // Use reflection to call TakeDamage method
+                System.Reflection.MethodInfo method = playerHealthComponent.GetType().GetMethod("TakeDamage", 
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.IgnoreCase);
+                
+                if (method != null)
+                {
+                    method.Invoke(playerHealthComponent, new object[] { attackDamage });
+                }
+                else
+                {
+                    Debug.LogWarning($"PlayerHealth component on {playerTransform.name} does not have a TakeDamage method");
+                }
+            }
+            else
+            {
+                // Fallback: try to find any component with TakeDamage method
+                Component[] allComponents = playerTransform.GetComponents<Component>();
+                foreach (Component comp in allComponents)
+                {
+                    System.Reflection.MethodInfo method = comp.GetType().GetMethod("TakeDamage", 
+                        System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.IgnoreCase);
+                    
+                    if (method != null)
+                    {
+                        method.Invoke(comp, new object[] { attackDamage });
+                        return;
+                    }
+                }
+                
+                Debug.LogWarning($"No TakeDamage method found on player {playerTransform.name}");
             }
         }
     }
@@ -198,5 +232,6 @@ public class Enemy : MonoBehaviour
     public void SetDetectionRange(float newRange) => detectionRange = newRange;
     public void SetAttackDamage(float newDamage) => attackDamage = newDamage;
     public void SetPlayerTransform(Transform player) => playerTransform = player;
+    public void SetPlayerHealthComponentName(string componentName) => playerHealthComponentName = componentName;
     public EnemyHealth GetHealth() => enemyHealth;
 }
